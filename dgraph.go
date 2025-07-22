@@ -78,31 +78,27 @@ func (n *NodeImpl) doRunDynamic(ctx context.Context, s State) (NodeResult, error
 	return NodeResult{Next: next, State: state, Iterations: 1}, err
 }
 
-type SplitStateFunc func(initialState State) ([]State, error)
 type ReduceStatesFunc func(initialState State, branchResults []State) (State, error)
 
 type ParallelNode struct {
 	name         string
-	innerNode    Node
-	splitState   SplitStateFunc
+	innerNodes   []Node
 	reduceStates ReduceStatesFunc
 	next         string
 }
 
 func NewParallelNode(
 	name string,
-	innerNode Node, // The node instance to run in each branch
-	split SplitStateFunc,
 	reduce ReduceStatesFunc,
 	next string, // Name of the next node in the graph after this parallel node completes
+	innerNodes ...Node, // The nodes instance to run in each branch
 ) *ParallelNode {
-	if name == "" || innerNode == nil || split == nil || reduce == nil || next == "" {
+	if name == "" || innerNodes == nil || reduce == nil || next == "" {
 		panic(fmt.Sprintf("Warning: Creating ParallelNode '%s' with potentially missing components.", name))
 	}
 	return &ParallelNode{
 		name:         name,
-		innerNode:    innerNode,
-		splitState:   split,
+		innerNodes:   innerNodes,
 		reduceStates: reduce,
 		next:         next,
 	}
@@ -118,12 +114,7 @@ func (p *ParallelNode) PossibleNexts() []string {
 func (p *ParallelNode) Run(ctx context.Context, initialState State) (NodeResult, error) {
 	nodeName := p.Name()
 
-	splitStates, err := p.splitState(initialState)
-	if err != nil {
-		return NodeResult{}, errors.WrapPrefix(err, fmt.Sprintf("parallel node '%s': split state failed", nodeName), 0)
-	}
-
-	numBranches := len(splitStates)
+	numBranches := len(p.innerNodes)
 	if numBranches == 0 {
 		return NodeResult{}, errors.Errorf("Parallel node '%s': split resulted in 0 branches", nodeName)
 	}
@@ -137,13 +128,13 @@ func (p *ParallelNode) Run(ctx context.Context, initialState State) (NodeResult,
 
 	for i := 0; i < numBranches; i++ {
 		index := i
-		branchState := splitStates[index]
+		node := p.innerNodes[index]
 
 		eg.Go(func() error {
 			recoverGoRoutine()
-			result, err := p.innerNode.Run(childCtx, branchState)
+			result, err := node.Run(childCtx, initialState)
 			if err != nil {
-				return errors.WrapPrefix(err, fmt.Sprintf("branch %d (inner node '%s')", index, p.innerNode.Name()), 0)
+				return errors.WrapPrefix(err, fmt.Sprintf("branch %d (inner node '%s')", index, node.Name()), 0)
 			}
 			mutex.Lock()
 			branchResults[index] = result.State

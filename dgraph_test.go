@@ -84,14 +84,9 @@ func TestCompile(t *testing.T) {
 			return state, nil
 		})
 
-		cParallelNode := NewParallelNode("C", nodeCParallel, func(initialState State) ([]State, error) {
-			states := lo.Times(2, func(i int) State {
-				return make(State)
-			})
-			return states, nil
-		}, func(initialState State, branchResults []State) (State, error) {
+		cParallelNode := NewParallelNode("C", func(initialState State, branchResults []State) (State, error) {
 			return initialState, nil
-		}, EndNode)
+		}, EndNode, nodeCParallel, nodeCParallel)
 
 		graphBuilder.AddNode(cParallelNode)
 
@@ -229,7 +224,7 @@ func TestCompile(t *testing.T) {
 
 	// ParallelNode with missing arguments
 	require.PanicsWithValue(t, "Warning: Creating ParallelNode '' with potentially missing components.", func() {
-		NewParallelNode("", nil, nil, nil, "")
+		NewParallelNode("", nil, "")
 	})
 
 	// Node that lists itself as possible next
@@ -287,12 +282,7 @@ func TestAToBParallel(t *testing.T) {
 		return state, nil
 	})
 
-	bParallelNode := NewParallelNode("B", nodeBParallel, func(initialState State) ([]State, error) {
-		states := lo.Times(2, func(i int) State {
-			return make(State)
-		})
-		return states, nil
-	}, func(initialState State, branchResults []State) (State, error) {
+	bParallelNode := NewParallelNode("B", func(initialState State, branchResults []State) (State, error) {
 		total := lo.Reduce(branchResults, func(acc int, item State, _ int) int {
 			if count, ok := item["count"].(int); ok {
 				return acc + count
@@ -301,7 +291,7 @@ func TestAToBParallel(t *testing.T) {
 		}, 0)
 		initialState["total"] = total
 		return initialState, nil
-	}, "C")
+	}, "C", nodeBParallel, nodeBParallel)
 
 	// A - B (parallel) - C
 	graphBuilder := NewGraphBuilder("Main", "A", 100)
