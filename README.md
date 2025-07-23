@@ -1,5 +1,3 @@
-** dgraph **
-
 [![Go Report Card](https://goreportcard.com/badge/github.com/kimbuba/dgraph)](https://goreportcard.com/report/github.com/kimbuba/dgraph)
 [![Go.Dev reference](https://img.shields.io/badge/go.dev-reference-blue?logo=go&logoColor=white)](https://pkg.go.dev/github.com/kimbuba/dgraph)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -356,6 +354,7 @@ fmt.Println(dotString)
 The `ToDOT()` method will output a string in DOT format. You can render this using [Graphviz](https://graphviz.org/download/) or an online viewer like [Edotor](https://edotor.net/).
 
 **DOT Output:**
+![Graph Visualization](graphviz.svg)
 
 ```dot
 digraph G {
