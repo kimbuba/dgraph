@@ -16,37 +16,40 @@ var ErrMaxIterations = errors.New("Max iterations exceeded")
 
 const EndNode = "END"
 
-type State map[string]interface{}
+type State struct {
+	MU   sync.RWMutex
+	Data map[any]any
+}
 
 type NodeResult struct {
 	Next       string
-	State      State
+	State      *State
 	Iterations int
 }
 
 type Node interface {
 	Name() string
 	PossibleNexts() []string
-	Run(ctx context.Context, state State) (NodeResult, error)
+	Run(ctx context.Context, state *State) (NodeResult, error)
 }
 
 type NodeImpl struct {
 	name           string
 	staticNext     string
 	possibleNexts  []string
-	staticHandler  func(context.Context, State) (State, error)
-	dynamicHandler func(context.Context, State) (string, State, error)
+	staticHandler  func(context.Context, *State) error
+	dynamicHandler func(context.Context, *State) (string, error)
 }
 
-func NewInnerNodeImpl(handler func(context.Context, State) (State, error)) *NodeImpl {
+func NewInnerNodeImpl(handler func(context.Context, *State) error) *NodeImpl {
 	return &NodeImpl{staticHandler: handler, possibleNexts: []string{}}
 }
 
-func NewStaticNodeImpl(name string, nextNode string, handler func(context.Context, State) (State, error)) *NodeImpl {
+func NewStaticNodeImpl(name string, nextNode string, handler func(context.Context, *State) error) *NodeImpl {
 	return &NodeImpl{name: name, staticNext: nextNode, staticHandler: handler, possibleNexts: []string{nextNode}}
 }
 
-func NewDynamicNodeImpl(name string, possibleNexts []string, handler func(context.Context, State) (string, State, error)) *NodeImpl {
+func NewDynamicNodeImpl(name string, possibleNexts []string, handler func(context.Context, *State) (string, error)) *NodeImpl {
 	return &NodeImpl{name: name, possibleNexts: possibleNexts, dynamicHandler: handler}
 }
 
@@ -58,49 +61,43 @@ func (n *NodeImpl) PossibleNexts() []string {
 	return n.possibleNexts
 }
 
-func (n *NodeImpl) Run(ctx context.Context, s State) (NodeResult, error) {
+func (n *NodeImpl) Run(ctx context.Context, s *State) (NodeResult, error) {
 	if n.dynamicHandler != nil {
 		return n.doRunDynamic(ctx, s)
 	}
 	return n.doRunStatic(ctx, s)
 }
 
-func (n *NodeImpl) doRunStatic(ctx context.Context, s State) (NodeResult, error) {
-	state, err := n.staticHandler(ctx, s)
-	if err != nil {
+func (n *NodeImpl) doRunStatic(ctx context.Context, s *State) (NodeResult, error) {
+	if err := n.staticHandler(ctx, s); err != nil {
 		return NodeResult{}, err
 	}
-	return NodeResult{Next: n.staticNext, State: state, Iterations: 1}, nil
+	return NodeResult{Next: n.staticNext, State: s, Iterations: 1}, nil
 }
 
-func (n *NodeImpl) doRunDynamic(ctx context.Context, s State) (NodeResult, error) {
-	next, state, err := n.dynamicHandler(ctx, s)
-	return NodeResult{Next: next, State: state, Iterations: 1}, err
+func (n *NodeImpl) doRunDynamic(ctx context.Context, s *State) (NodeResult, error) {
+	next, err := n.dynamicHandler(ctx, s)
+	return NodeResult{Next: next, State: s, Iterations: 1}, err
 }
-
-type ReduceStatesFunc func(initialState State, branchResults []State) (State, error)
 
 type ParallelNode struct {
-	name         string
-	innerNodes   []Node
-	reduceStates ReduceStatesFunc
-	next         string
+	name       string
+	innerNodes []Node
+	next       string
 }
 
 func NewParallelNode(
 	name string,
-	reduce ReduceStatesFunc,
 	next string, // Name of the next node in the graph after this parallel node completes
 	innerNodes ...Node, // The nodes instance to run in each branch
 ) *ParallelNode {
-	if name == "" || innerNodes == nil || reduce == nil || next == "" {
+	if name == "" || innerNodes == nil || next == "" {
 		panic(fmt.Sprintf("Warning: Creating ParallelNode '%s' with potentially missing components.", name))
 	}
 	return &ParallelNode{
-		name:         name,
-		innerNodes:   innerNodes,
-		reduceStates: reduce,
-		next:         next,
+		name:       name,
+		innerNodes: innerNodes,
+		next:       next,
 	}
 }
 
@@ -111,7 +108,7 @@ func (p *ParallelNode) PossibleNexts() []string {
 	return []string{p.next}
 }
 
-func (p *ParallelNode) Run(ctx context.Context, initialState State) (NodeResult, error) {
+func (p *ParallelNode) Run(ctx context.Context, state *State) (NodeResult, error) {
 	nodeName := p.Name()
 
 	numBranches := len(p.innerNodes)
@@ -123,8 +120,6 @@ func (p *ParallelNode) Run(ctx context.Context, initialState State) (NodeResult,
 
 	var eg *errgroup.Group
 	eg, childCtx := errgroup.WithContext(ctx)
-	branchResults := make([]State, numBranches)
-	var mutex sync.Mutex
 
 	for i := 0; i < numBranches; i++ {
 		index := i
@@ -132,13 +127,10 @@ func (p *ParallelNode) Run(ctx context.Context, initialState State) (NodeResult,
 
 		eg.Go(func() error {
 			recoverGoRoutine()
-			result, err := node.Run(childCtx, initialState)
+			result, err := node.Run(childCtx, state)
 			if err != nil {
 				return errors.WrapPrefix(err, fmt.Sprintf("branch %d (inner node '%s')", index, node.Name()), 0)
 			}
-			mutex.Lock()
-			branchResults[index] = result.State
-			mutex.Unlock()
 			if result.Next != "" {
 				return errors.Errorf("Inner node Next must be empty it, was '%s'", result.Next)
 			}
@@ -151,11 +143,7 @@ func (p *ParallelNode) Run(ctx context.Context, initialState State) (NodeResult,
 		return NodeResult{}, errors.WrapPrefix(err, fmt.Sprintf("parallel node '%s': error during parallel execution", nodeName), 0)
 	}
 
-	finalState, err := p.reduceStates(initialState, branchResults)
-	if err != nil {
-		return NodeResult{}, errors.WrapPrefix(err, fmt.Sprintf("parallel node '%s': reduce states failed", nodeName), 0)
-	}
-	return NodeResult{Next: p.next, State: finalState, Iterations: 1}, nil
+	return NodeResult{Next: p.next, State: state, Iterations: 1}, nil
 }
 
 // Graph represents a compiled, immutable computation graph.
@@ -190,7 +178,7 @@ func (g *Graph) PossibleNexts() []string {
 // Run executes the graph starting from its entry point.
 //
 //nolint:gocognit
-func (g *Graph) Run(ctx context.Context, state State) (NodeResult, error) {
+func (g *Graph) Run(ctx context.Context, state *State) (NodeResult, error) {
 	currentNode, ok := g.nodes[g.startPoint]
 	if !ok {
 		// This should ideally be caught by Compile, but double-check.
@@ -580,18 +568,26 @@ func writeGraphDOT(b *strings.Builder, gr *Graph, parentPrefix string, visited m
 	}
 }
 
-// CopyState creates a shallow copy of the State map.
-func CopyState(in State) State {
-	dup := make(State)
-	for k, v := range in {
-		dup[k] = v
-	}
-	return dup
-}
-
 func recoverGoRoutine() {
 	if r := recover(); r != nil {
 		stack := debug.Stack()
 		fmt.Printf("GoRoutinePanicked: [%s] [%s]", r, string(stack))
 	}
+}
+
+func Get[T any](m map[any]any, key any) (T, bool) {
+	// First, check if the key exists in the map.
+	val, ok := m[key]
+	if !ok {
+		// If the key doesn't exist, we can't proceed.
+		// We return the zero value of type T (e.g., "" for string, 0 for int).
+		var zero T
+		return zero, false
+	}
+
+	// Now, safely assert the type.
+	// This will not panic. If `val` is not of type `T`,
+	// `typedVal` will be the zero value of T and `ok` will be false.
+	typedVal, ok := val.(T)
+	return typedVal, ok
 }
