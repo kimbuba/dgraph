@@ -276,7 +276,10 @@ func TestCompile(t *testing.T) {
 func TestAToBParallel(t *testing.T) {
 	// Parallel Node
 	nodeBParallel := NewInnerNodeImpl(func(ctx context.Context, state *State) error {
-		state.Data["count"] = 1
+		state.MU.Lock()
+		count, _ := Get[int64](state.Data, "count")
+		state.Data["count"] = count + 1
+		state.MU.Unlock()
 		return nil
 	})
 
@@ -301,6 +304,7 @@ func TestAToBParallel(t *testing.T) {
 	state := State{
 		Data: make(map[any]any),
 	}
+	state.Data["count"] = 0
 	finalResult, err := graph.Run(t.Context(), &state)
 	if err != nil {
 		t.Fatal(err)
@@ -313,6 +317,58 @@ func TestAToBParallel(t *testing.T) {
 	if _, ok := finalResult.State.Data["mainVisitedC"]; !ok {
 		t.Errorf("Expected state to mark C as visited, but got: %v", finalResult.State.Data["mainVisitedC"])
 	}
+	totalCount, _ := Get[int64](finalResult.State.Data, "count")
+	require.Equal(t, int64(2), totalCount)
+}
+
+func TestAToBDynamicParallel(t *testing.T) {
+	// Parallel Node
+	nodeBParallel := NewInnerNodeImpl(func(ctx context.Context, state *State) error {
+		state.MU.Lock()
+		count, _ := Get[int64](state.Data, "count")
+		state.Data["count"] = count + 1
+		state.MU.Unlock()
+		return nil
+	})
+
+	bParallelNode := NewDynamicParallelNode("B", "C", func(ctx context.Context, state *State) ([]Node, error) {
+		return []Node{nodeBParallel, nodeBParallel}, nil
+	})
+
+	// A - B (parallel) - C
+	graphBuilder := NewGraphBuilder("Main", "A", 100)
+	graphBuilder.AddNode(NewStaticNodeImpl("A", "B", func(ctx context.Context, state *State) error {
+		state.Data["mainVisitedA"] = true
+		return nil
+	}))
+	graphBuilder.AddNode(bParallelNode)
+	graphBuilder.AddNode(NewStaticNodeImpl("C", EndNode, func(ctx context.Context, state *State) error {
+		state.Data["mainVisitedC"] = true
+		return nil
+	}))
+
+	graph, err := graphBuilder.Compile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := State{
+		Data: make(map[any]any),
+	}
+	state.Data["count"] = 0
+	finalResult, err := graph.Run(t.Context(), &state)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, ok := finalResult.State.Data["mainVisitedA"]; !ok {
+		t.Errorf("Expected state to mark A as visited, but got: %v", finalResult.State.Data["mainVisitedA"])
+	}
+
+	if _, ok := finalResult.State.Data["mainVisitedC"]; !ok {
+		t.Errorf("Expected state to mark C as visited, but got: %v", finalResult.State.Data["mainVisitedC"])
+	}
+	totalCount, _ := Get[int64](finalResult.State.Data, "count")
+	require.Equal(t, int64(2), totalCount)
 }
 
 func TestAToSubGraphToD(t *testing.T) {

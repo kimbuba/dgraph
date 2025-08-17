@@ -110,8 +110,50 @@ func (p *ParallelNode) PossibleNexts() []string {
 
 func (p *ParallelNode) Run(ctx context.Context, state *State) (NodeResult, error) {
 	nodeName := p.Name()
+	return runInnerNodes(ctx, state, nodeName, p.next, p.innerNodes)
+}
 
-	numBranches := len(p.innerNodes)
+type DynamicParallelNode struct {
+	name         string
+	nodeProvider func(context.Context, *State) ([]Node, error)
+	next         string
+}
+
+func NewDynamicParallelNode(
+	name string,
+	next string, // Name of the next node in the graph after this parallel node completes
+	nodeProvider func(context.Context, *State) ([]Node, error), // Function that returns nodes to run in parallel
+) *DynamicParallelNode {
+	if name == "" || nodeProvider == nil || next == "" {
+		panic(fmt.Sprintf("Warning: Creating DynamicParallelNode '%s' with potentially missing components.", name))
+	}
+	return &DynamicParallelNode{
+		name:         name,
+		nodeProvider: nodeProvider,
+		next:         next,
+	}
+}
+
+func (dp *DynamicParallelNode) Name() string {
+	return dp.name
+}
+
+func (dp *DynamicParallelNode) PossibleNexts() []string {
+	return []string{dp.next}
+}
+
+func (dp *DynamicParallelNode) Run(ctx context.Context, state *State) (NodeResult, error) {
+	nodeName := dp.Name()
+	// Get the dynamic list of nodes to run in parallel
+	innerNodes, err := dp.nodeProvider(ctx, state)
+	if err != nil {
+		return NodeResult{}, errors.WrapPrefix(err, fmt.Sprintf("dynamic parallel node '%s': error getting nodes from provider", nodeName), 0)
+	}
+	return runInnerNodes(ctx, state, nodeName, dp.next, innerNodes)
+}
+
+func runInnerNodes(ctx context.Context, state *State, nodeName string, next string, innerNodes []Node) (NodeResult, error) {
+	numBranches := len(innerNodes)
 	if numBranches == 0 {
 		return NodeResult{}, errors.Errorf("Parallel node '%s': split resulted in 0 branches", nodeName)
 	}
@@ -123,7 +165,7 @@ func (p *ParallelNode) Run(ctx context.Context, state *State) (NodeResult, error
 
 	for i := 0; i < numBranches; i++ {
 		index := i
-		node := p.innerNodes[index]
+		node := innerNodes[index]
 
 		eg.Go(func() error {
 			recoverGoRoutine()
@@ -143,7 +185,7 @@ func (p *ParallelNode) Run(ctx context.Context, state *State) (NodeResult, error
 		return NodeResult{}, errors.WrapPrefix(err, fmt.Sprintf("parallel node '%s': error during parallel execution", nodeName), 0)
 	}
 
-	return NodeResult{Next: p.next, State: state, Iterations: 1}, nil
+	return NodeResult{Next: next, State: state, Iterations: 1}, nil
 }
 
 // Graph represents a compiled, immutable computation graph.
