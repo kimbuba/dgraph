@@ -305,19 +305,19 @@ func TestAToBParallel(t *testing.T) {
 		Data: make(map[any]any),
 	}
 	state.Data["count"] = 0
-	finalResult, err := graph.Run(t.Context(), &state)
+	_, err = graph.Run(t.Context(), &state)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if _, ok := finalResult.State.Data["mainVisitedA"]; !ok {
-		t.Errorf("Expected state to mark A as visited, but got: %v", finalResult.State.Data["mainVisitedA"])
+	if _, ok := state.Data["mainVisitedA"]; !ok {
+		t.Errorf("Expected state to mark A as visited, but got: %v", state.Data["mainVisitedA"])
 	}
 
-	if _, ok := finalResult.State.Data["mainVisitedC"]; !ok {
-		t.Errorf("Expected state to mark C as visited, but got: %v", finalResult.State.Data["mainVisitedC"])
+	if _, ok := state.Data["mainVisitedC"]; !ok {
+		t.Errorf("Expected state to mark C as visited, but got: %v", state.Data["mainVisitedC"])
 	}
-	totalCount, _ := Get[int64](finalResult.State.Data, "count")
+	totalCount, _ := Get[int64](state.Data, "count")
 	require.Equal(t, int64(2), totalCount)
 }
 
@@ -355,19 +355,19 @@ func TestAToBDynamicParallel(t *testing.T) {
 		Data: make(map[any]any),
 	}
 	state.Data["count"] = 0
-	finalResult, err := graph.Run(t.Context(), &state)
+	_, err = graph.Run(t.Context(), &state)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if _, ok := finalResult.State.Data["mainVisitedA"]; !ok {
-		t.Errorf("Expected state to mark A as visited, but got: %v", finalResult.State.Data["mainVisitedA"])
+	if _, ok := state.Data["mainVisitedA"]; !ok {
+		t.Errorf("Expected state to mark A as visited, but got: %v", state.Data["mainVisitedA"])
 	}
 
-	if _, ok := finalResult.State.Data["mainVisitedC"]; !ok {
-		t.Errorf("Expected state to mark C as visited, but got: %v", finalResult.State.Data["mainVisitedC"])
+	if _, ok := state.Data["mainVisitedC"]; !ok {
+		t.Errorf("Expected state to mark C as visited, but got: %v", state.Data["mainVisitedC"])
 	}
-	totalCount, _ := Get[int64](finalResult.State.Data, "count")
+	totalCount, _ := Get[int64](state.Data, "count")
 	require.Equal(t, int64(2), totalCount)
 }
 
@@ -405,22 +405,22 @@ func TestAToSubGraphToD(t *testing.T) {
 	state := State{
 		Data: make(map[any]any),
 	}
-	finalResult, err := graph.Run(t.Context(), &state)
+	_, err = graph.Run(t.Context(), &state)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if _, ok := finalResult.State.Data["mainVisitedA"]; !ok {
-		t.Errorf("Expected state to mark A as visited, but got: %v", finalResult.State.Data["mainVisitedA"])
+	if _, ok := state.Data["mainVisitedA"]; !ok {
+		t.Errorf("Expected state to mark A as visited, but got: %v", state.Data["mainVisitedA"])
 	}
-	if _, ok := finalResult.State.Data["subGraphVisitedA"]; !ok {
-		t.Errorf("Expected state to mark subGrap A as visited, but got: %v", finalResult.State.Data["subGraphVisitedA"])
+	if _, ok := state.Data["subGraphVisitedA"]; !ok {
+		t.Errorf("Expected state to mark subGrap A as visited, but got: %v", state.Data["subGraphVisitedA"])
 	}
-	if _, ok := finalResult.State.Data["subGraphVisitedB"]; !ok {
-		t.Errorf("Expected state to mark subGrap B as visited, but got: %v", finalResult.State.Data["subGraphVisitedB"])
+	if _, ok := state.Data["subGraphVisitedB"]; !ok {
+		t.Errorf("Expected state to mark subGrap B as visited, but got: %v", state.Data["subGraphVisitedB"])
 	}
-	if _, ok := finalResult.State.Data["mainVisitedC"]; !ok {
-		t.Errorf("Expected state to mark C as visited, but got: %v", finalResult.State.Data["mainVisitedC"])
+	if _, ok := state.Data["mainVisitedC"]; !ok {
+		t.Errorf("Expected state to mark C as visited, but got: %v", state.Data["mainVisitedC"])
 	}
 }
 
@@ -443,16 +443,16 @@ func TestAToB(t *testing.T) {
 	state := State{
 		Data: make(map[any]any),
 	}
-	finalResult, err := graph.Run(t.Context(), &state)
+	_, err = graph.Run(t.Context(), &state)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if _, ok := finalResult.State.Data["mainVisitedA"]; !ok {
-		t.Errorf("Expected state to mark A as visited, but got: %v", finalResult.State.Data["mainVisitedA"])
+	if _, ok := state.Data["mainVisitedA"]; !ok {
+		t.Errorf("Expected state to mark A as visited, but got: %v", state.Data["mainVisitedA"])
 	}
-	if _, ok := finalResult.State.Data["mainVisitedB"]; !ok {
-		t.Errorf("Expected state to mark B as visited, but got: %v", finalResult.State.Data["mainVisitedB"])
+	if _, ok := state.Data["mainVisitedB"]; !ok {
+		t.Errorf("Expected state to mark B as visited, but got: %v", state.Data["mainVisitedB"])
 	}
 }
 

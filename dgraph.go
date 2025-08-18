@@ -23,7 +23,6 @@ type State struct {
 
 type NodeResult struct {
 	Next       string
-	State      *State
 	Iterations int
 }
 
@@ -72,12 +71,12 @@ func (n *NodeImpl) doRunStatic(ctx context.Context, s *State) (NodeResult, error
 	if err := n.staticHandler(ctx, s); err != nil {
 		return NodeResult{}, err
 	}
-	return NodeResult{Next: n.staticNext, State: s, Iterations: 1}, nil
+	return NodeResult{Next: n.staticNext, Iterations: 1}, nil
 }
 
 func (n *NodeImpl) doRunDynamic(ctx context.Context, s *State) (NodeResult, error) {
 	next, err := n.dynamicHandler(ctx, s)
-	return NodeResult{Next: next, State: s, Iterations: 1}, err
+	return NodeResult{Next: next, Iterations: 1}, err
 }
 
 type ParallelNode struct {
@@ -185,7 +184,7 @@ func runInnerNodes(ctx context.Context, state *State, nodeName string, next stri
 		return NodeResult{}, errors.WrapPrefix(err, fmt.Sprintf("parallel node '%s': error during parallel execution", nodeName), 0)
 	}
 
-	return NodeResult{Next: next, State: state, Iterations: 1}, nil
+	return NodeResult{Next: next, Iterations: 1}, nil
 }
 
 // Graph represents a compiled, immutable computation graph.
@@ -260,10 +259,9 @@ func (g *Graph) Run(ctx context.Context, state *State) (NodeResult, error) {
 			}
 		}
 
-		state = result.State
 		if result.Next == EndNode {
 			// Set Next to g.subGraphEndPoint for sub-graphs.
-			return NodeResult{Next: g.subGraphJoinPoint, State: state, Iterations: iterations}, nil
+			return NodeResult{Next: g.subGraphJoinPoint, Iterations: iterations}, nil
 		}
 		nextNode, ok := g.nodes[result.Next]
 		if !ok {
